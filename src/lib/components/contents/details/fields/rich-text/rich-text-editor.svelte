@@ -101,9 +101,9 @@
   );
   const components = $derived.by(() => {
     // Disable nested components
-    if (inEditorComponent) {
-      return [];
-    }
+    // if (inEditorComponent) {
+    //   return [];
+    // }
 
     return _editorComponents
       .map((name) =>
