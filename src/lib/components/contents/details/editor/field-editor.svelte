@@ -245,6 +245,7 @@
   <FieldEditorGroup
     aria-label={_('x_field', { values: { field: fieldLabel } })}
     data-field-type={fieldType}
+    data-locale={locale}
     data-key-path={keyPath}
     data-typed-key-path={typedKeyPath}
     hidden={fieldType === 'compute'}

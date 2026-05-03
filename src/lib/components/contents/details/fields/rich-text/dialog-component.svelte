@@ -1,15 +1,16 @@
 <script>
+  import { _ } from '@sveltia/i18n';
   import { Button, Dialog, Spacer } from '@sveltia/ui';
-  import equal from 'fast-deep-equal';
+  import { matchesShortcuts } from '@sveltia/utils/events';
   import { flatten, unflatten } from 'flat';
-  import { onMount, untrack } from 'svelte';
-  import { _ } from 'svelte-i18n';
+  import { onMount } from 'svelte';
 
   import FieldEditor from '$lib/components/contents/details/editor/field-editor.svelte';
+  import { applyTransformations } from '$lib/services/common/transformations';
   import { entryDraft } from '$lib/services/contents/draft';
   import { getDefaultValues } from '$lib/services/contents/draft/defaults';
-  import { validateEntry, validateFields } from '$lib/services/contents/draft/validate';
-  import { applyTransformations } from '$lib/services/common/transformations';
+  // import { validateEntry } from '$lib/services/contents/draft/validate';
+  import { validateFields } from '$lib/services/contents/draft/validate/fields.js';
 
   /**
    * @import { DraftValueStoreKey, InternalLocaleCode, RawEntryContent } from '$lib/types/private';
@@ -90,16 +91,24 @@
    */
   const currentValues = $derived.by(() => {
     if (!($entryDraft && locale && keyPath)) {
-      return undefined;
+      // Fall back to the values prop when locale/keyPath aren't set yet (e.g., during initial render)
+      return values;
     }
 
-    return unflatten(
+    const draftValues = unflatten(
       Object.fromEntries(
         Object.entries($state.snapshot($entryDraft[valueStoreKey][locale] ?? {}))
           .filter(([key]) => key.startsWith(keyPathPrefix))
           .map(([key, value]) => [key.replace(keyPathPrefix, ''), value]),
       ),
     );
+
+    // If entryDraft doesn't have the values yet, fall back to the values prop
+    if (!draftValues || Object.keys(draftValues).length === 0) {
+      return values;
+    }
+
+    return draftValues;
   });
 
   /**
@@ -171,6 +180,7 @@
 
     // Check if THIS component's fields are valid using the returned validities directly
     const localeValidities = extraValidities[locale] ?? {};
+
     const thisComponentValid = !Object.entries(localeValidities).some(
       ([key, validity]) => key.startsWith(keyPathPrefix) && !validity.valid,
     );
@@ -200,6 +210,34 @@
         /** @type {HTMLElement} */ (wrapper?.closest('[data-key-path]'))?.dataset.keyPath
       );
 
+      // Initialize entryDraft with values from the prop if not already present
+      if ($entryDraft && locale && keyPath && values) {
+        const { defaultLocale } = $entryDraft;
+
+        const existingValues = Object.fromEntries(
+          Object.entries($state.snapshot($entryDraft[valueStoreKey][locale] ?? {})).filter(
+            ([key]) => key.startsWith(keyPathPrefix),
+          ),
+        );
+
+        if (Object.keys(existingValues).length === 0) {
+          const initValues =
+            values ?? unflatten(getDefaultValues({ fields, locale, defaultLocale })) ?? {};
+
+          initValues.__sc_component_name = componentName;
+
+          Object.assign(
+            $entryDraft[valueStoreKey][locale],
+            Object.fromEntries(
+              Object.entries(flatten(initValues)).map(([key, value]) => [
+                `${keyPathPrefix}${key}`,
+                value,
+              ]),
+            ),
+          );
+        }
+      }
+
       // Auto-open dialog for freshly inserted components
       if (isNewComponent) {
         openDialog();
@@ -216,32 +254,6 @@
         });
       }
     };
-  });
-
-  // Initialize values in entryDraft
-  $effect(() => {
-    void [values, locale, keyPath];
-
-    untrack(() => {
-      if ($entryDraft && locale && keyPath) {
-        const { defaultLocale } = $entryDraft;
-
-        values ??= unflatten(getDefaultValues({ fields, locale, defaultLocale })) ?? {};
-        values.__sc_component_name = componentName;
-
-        if (!equal(values, currentValues)) {
-          Object.assign(
-            $entryDraft[valueStoreKey][locale],
-            Object.fromEntries(
-              Object.entries(flatten(values)).map(([key, value]) => [
-                `${keyPathPrefix}${key}`,
-                value,
-              ]),
-            ),
-          );
-        }
-      }
-    });
   });
 
   /**
@@ -282,7 +294,7 @@
    * The text to display in the placeholder. Priority:
    * 1. Formatted summary template (if provided and produces non-empty result)
    * 2. First string field's value
-   * 3. Component label
+   * 3. Component label.
    */
   const displayText = $derived.by(() => {
     // Try summary template first
@@ -343,6 +355,12 @@
   size="large"
   showOk={false}
   showCancel={false}
+  onkeydown={(event) => {
+    if (matchesShortcuts(event, 'Accel+S')) {
+      event.preventDefault();
+      handleOk();
+    }
+  }}
 >
   <div role="none" class="fields">
     {#if locale && keyPath}
@@ -361,7 +379,7 @@
   {#snippet footer()}
     <Button
       variant="secondary"
-      label={$_('remove')}
+      label={_('remove')}
       onclick={() => {
         handleRemove();
       }}
@@ -369,14 +387,14 @@
     <Spacer flex={true} />
     <Button
       variant="primary"
-      label={$_(isNewComponent ? 'insert' : 'update')}
+      label={_(isNewComponent ? 'insert' : 'update')}
       onclick={() => {
         handleOk();
       }}
     />
     <Button
       variant="secondary"
-      label={$_('cancel')}
+      label={_('cancel')}
       onclick={() => {
         handleCancel();
       }}
