@@ -105,7 +105,7 @@
   );
   const components = $derived.by(() => {
     // Disable nested components
-    if (inEditorComponent) {
+    if (inEditorComponent && !fieldConfig.editor_components) {
       return [];
     }
 
